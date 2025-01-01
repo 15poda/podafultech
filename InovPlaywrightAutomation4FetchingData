@@ -1,0 +1,63 @@
+from flask import Flask, jsonify
+from playwright.sync_api import sync_playwright
+
+app = Flask(__name__)
+
+# Function to perform Playwright automation
+def run_playwright():
+    with sync_playwright() as p:
+        print('Launching headless browser')
+        browser = p.chromium.launch(headless=True)  # Headless browser
+        context = browser.new_context()
+        page = context.new_page()
+
+        # Step 1: Navigate to login page
+        page.goto("https://www.inovcargo.com/wp-login.php", timeout=60000)
+
+        # Step 2: Log in to the website
+        page.fill("input[id='user_login']", "USERNAME")
+        page.fill("input[id='user_pass']", "PASSWORD")
+        page.click("input[id='wp-submit']")
+        print('Login successful')
+
+        # Wait for navigation or login completion
+        page.wait_for_load_state("networkidle")
+
+        # Step 3: Navigate to dashboard
+        page.goto("https://www.inovcargo.com/dashboard", timeout=60000)
+        page.wait_for_load_state("networkidle")
+        print('Loaded table page successfully')
+
+        # Step 4: Extract table data
+        table_selector = "table[id='shipment-list']"
+        table = page.locator(table_selector)
+        rows = table.locator("tr")
+        print('Scrapped table data successfully')
+
+        table_data = []
+        for row_index in range(rows.count()):
+            cells = rows.nth(row_index).locator("td")
+            row_data = [cells.nth(cell_index).inner_text() for cell_index in range(cells.count())]
+            table_data.append(row_data)
+
+        # Close the browser
+        browser.close()
+
+        return table_data
+
+# Define the GET endpoint
+@app.route('/get_data', methods=['GET'])
+def get_data():
+    try:
+        # Run Playwright automation
+        data = run_playwright()
+        
+        # Return the data after completion
+        return jsonify({"status": "success", "data": data})
+    except Exception as e:
+        # Handle errors gracefully
+        return jsonify({"status": "error", "message": str(e)})
+
+# Ensure the app listens on port 8080
+if __name__ == "__main__":
+    app.run(host="0.0.0.0", port=8080)
